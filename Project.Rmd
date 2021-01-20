@@ -1,0 +1,353 @@
+---
+title: "Project"
+author: "Josh Sherback"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(ISLR)
+library(caret)
+library(pls)
+library(pROC)
+BabyShop <- read.csv("BabyShop.csv")
+```
+
+PART 1: [25 points] Training the model
+
+1.Split the data into a training set and test 
+
+```{r}
+set.seed(123)
+BabyShop <- na.omit(BabyShop)
+s <- sample(c(1:nrow(BabyShop)), .8*nrow(BabyShop))
+train <- BabyShop[s,]
+test <- BabyShop[-s,]
+```
+
+
+2. Fit a logistic model to the training data, and compute the predicted probabilities of
+Pregnant based on the test data.
+
+```{r}
+set.seed(123)
+log.mod <- glm(PREGNANT ~.,data = train, family=binomial)
+summary(log.mod)
+
+prob.test <- predict(log.mod, newdata = test,
+                      type = "response")
+```
+
+
+3.Create an ROC curve using the roc() function displaying the sensitivity on the y-axis
+and 1-specificity on the x-axis. Compute the area under the ROC curve. Using this
+value, comment on the how the model seems to be performing given the test set.
+
+```{r}
+test.pregnant <-factor(test$PREGNANT,levels=c("1","0"))
+
+rocCurve <- roc(response = test.pregnant, predictor = prob.test)
+#.89 is a really good auc, .5 is random and 1 is perfect
+auc(rocCurve)
+
+plot(rocCurve, legacy.axes = TRUE)
+```
+
+
+4. Create a Sensitivity-Specificity Cross Plot. Use this to estimate the optimal threshold value. In this we are looking for a threshold value that will give us the highest values of sensitivity and specificity at the same time. If the sensitivities and specificities are not close to equal, get as close as you can, but err on the side of choosing a higher specificity.
+```{r}
+plot(rev(rocCurve$thresholds),rocCurve$sensitivities,ylab="Sens(open)/Spec(solid)")
+points(rev(rocCurve$thresholds), rocCurve$specificities,col="blue",pch=20)
+```
+
+
+(a) From the roc() output, print a section of the threshold, sensitivity, and specificity values to show which value you would choose.
+```{r}
+#we are looking for the intersection of the two lines and that appears to happen at a threshold of .13 which would have sensitivity/specificity values of around .8
+```
+
+
+5. Using your chosen threshold value and the vector of predicted probabilities from above, predict the pregnancy/non-pregnancy of each individual in the test set.
+
+(a) With the predicted values, create and display a confusion matrix.
+```{r}
+pred.test <-ifelse(prob.test >=.13,1,0)
+pred.test <-factor(pred.test,levels=c("1","0"))
+test.admit <-factor(test$PREGNANT,levels=c("1","0"))
+
+confusionMatrix(data=pred.test , test.admit , positive ="1")
+```
+
+
+(b) Compute the overall accuracy rate of the predictions, sensitivity, specificity, positive predictive value, and negative predictive value. Give a the values and a
+statement for each interpreting them.
+
+Accuracy Rate = . This is 70%.
+Sensitivity = . This is the proportion of observation of 1's that were correctly predicted as 1, which is .9029.
+Specificity = . This is the proportion of observations that were correctly predicted as 0, which is .6296.
+Positive predicted value = the proportion of correctly predicted pregnant customers. This is .4581.
+Negative predicted value = the proportion of correctly predicted non-pregnant customers. This is .9492.
+
+
+
+
+Part 2: [25 points] Investigating the predictive ability of the model.
+
+1. Using your threshold value that you chose from Part 1, use 10-fold cross validation to compute a set of estimates of the accuracy, sensitivity, specificity, ppv, and npv.
+
+In this,
+(a) Compute K = 10 values of the accuracy, sensitivity, specificity, ppv, and npv.
+```{r}
+thresh <- .13
+n <- 10
+
+sens1 <- numeric(n)
+spec1 <- numeric(n)
+acc1 <- numeric(n)
+ppc1 <- numeric(n)
+npv1 <- numeric(n)
+
+k <- 10
+cv_folds <- createFolds(BabyShop$PREGNANT, k = k, returnTrain = TRUE)
+
+set.seed(123)
+for(i in 1:n){
+ folds <- cv_folds[[i]]
+ train <- BabyShop[folds, ]
+ test <- BabyShop[-folds, ]
+ log.mod <- glm(PREGNANT ~ ., data = train, family = binomial)
+ prob.test <- predict(log.mod, newdata = test, type = "response")
+ test.pregnant <- factor(test$PREGNANT, levels = c("1", "0"))
+ prob.test <- ifelse(prob.test >= thresh, 1, 0)  
+ prob.test <- factor(prob.test, levels = c("1", "0"))
+ 
+ 
+ t <- table(prob.test, test.pregnant)
+ t
+ sens1[i] <- t[1, 1] / sum(t[1, 1] + t[2, 1])
+ spec1[i] <- t[2, 2] / sum(t[1, 2] + t[2, 2])
+ acc1[i] <- sum(t[1, 1] + t[2, 2]) / sum(t[1, 1] + t[1, 2] + t[2, 1] + t[2, 2])
+ ppv1 <- t[1, 1] / sum(t[1, 1] + t[1, 2])
+ npv1 <- t[2, 2] / sum(t[2, 1] + t[2, 2])
+}
+
+sens1
+spec1
+acc1
+ppv1
+npv1
+
+box1 <- boxplot(data.frame(sens1, spec1, acc1, ppv1, npv1), horizontal = TRUE)
+
+summary(sens1)
+summary(spec1)
+summary(acc1)
+summary(ppv1)
+summary(npv1)
+```
+
+2. Looking back at at the roc() output and cross-plot from Part 1(4) above, aside from the threshold value that you chose, choose three other values close to this one (have at least one above and one below).
+```{r}
+thresh <- .27
+n <- 10
+
+sens2 <- numeric(n)
+spec2 <- numeric(n)
+acc2<- numeric(n)
+ppv2 <- numeric(n)
+npv2 <- numeric(n)
+
+k <- 10
+cv_folds <- createFolds(BabyShop$PREGNANT, k = k, returnTrain = TRUE)
+
+set.seed(123)
+for(i in 1:n){
+ folds <- cv_folds[[i]]
+ train <- BabyShop[folds, ]
+ test <- BabyShop[-folds, ]
+ log.mod <- glm(PREGNANT ~ ., data = train, family = binomial)
+ prob.test <- predict(log.mod, newdata = test, type = "response")
+ test.pregnant <- factor(test$PREGNANT, levels = c("1", "0"))
+ prob.test <- ifelse(prob.test >= thresh, 1, 0)  
+ prob.test <- factor(prob.test, levels = c("1", "0"))
+ 
+ 
+ t <- table(prob.test, test.pregnant)
+ t
+ sens2[i] <- t[1, 1] / sum(t[1, 1] + t[2, 1])
+ spec2[i] <- t[2, 2] / sum(t[1, 2] + t[2, 2])
+ acc2[i] <- sum(t[1, 1] + t[2, 2]) / sum(t[1, 1] + t[1, 2] + t[2, 1] + t[2, 2])
+ ppv2 <- t[1, 1] / sum(t[1, 1] + t[1, 2])
+ npv2 <- t[2, 2] / sum(t[2, 1] + t[2, 2])
+}
+
+sens2
+spec2
+acc2
+ppv2
+npv2
+
+box2 <- boxplot(data.frame(sens2, spec2, acc2, ppv2, npv2), horizontal = TRUE)
+
+summary(sens2)
+summary(spec2)
+summary(acc2)
+summary(ppv2)
+summary(npv2)
+```
+
+
+```{r}
+thresh <- .07
+n <- 10
+
+sens3 <- numeric(n)
+spec3 <- numeric(n)
+acc3 <- numeric(n)
+ppv3 <- numeric(n)
+npv3 <- numeric(n)
+
+k <- 10
+cv_folds <- createFolds(BabyShop$PREGNANT, k = k, returnTrain = TRUE)
+
+set.seed(123)
+for(i in 1:n){
+ folds <- cv_folds[[i]]
+ train <- BabyShop[folds, ]
+ test <- BabyShop[-folds, ]
+ log.mod <- glm(PREGNANT ~ ., data = train, family = binomial)
+ prob.test <- predict(log.mod, newdata = test, type = "response")
+ test.pregnant <- factor(test$PREGNANT, levels = c("1", "0"))
+ prob.test <- ifelse(prob.test >= thresh, 1, 0)  
+ prob.test <- factor(prob.test, levels = c("1", "0"))
+ 
+ 
+ t <- table(prob.test, test.pregnant)
+ t
+ sens3[i] <- t[1, 1] / sum(t[1, 1] + t[2, 1])
+ spec3[i] <- t[2, 2] / sum(t[1, 2] + t[2, 2])
+ acc3[i] <- sum(t[1, 1] + t[2, 2]) / sum(t[1, 1] + t[1, 2] + t[2, 1] + t[2, 2])
+ ppv3 <- t[1, 1] / sum(t[1, 1] + t[1, 2])
+ npv3 <- t[2, 2] / sum(t[2, 1] + t[2, 2])
+}
+
+sens3
+spec3
+acc3
+ppv3
+npv3
+
+box3 <- boxplot(data.frame(sens3, spec3, acc3, ppv3, npv3), horizontal = TRUE)
+
+summary(sens3)
+summary(spec3)
+summary(acc3)
+summary(ppv3)
+summary(npv3)
+```
+
+```{r}
+thresh <- .40
+n <- 10
+
+sens4 <- numeric(n)
+spec4 <- numeric(n)
+acc4 <- numeric(n)
+ppv4 <- numeric(n)
+npv4 <- numeric(n)
+
+k <- 10
+cv_folds <- createFolds(BabyShop$PREGNANT, k = k, returnTrain = TRUE)
+
+set.seed(123)
+for(i in 1:n){
+ folds <- cv_folds[[i]]
+ train <- BabyShop[folds, ]
+ test <- BabyShop[-folds, ]
+ log.mod <- glm(PREGNANT ~ ., data = train, family = binomial)
+ prob.test <- predict(log.mod, newdata = test, type = "response")
+ test.pregnant <- factor(test$PREGNANT, levels = c("1", "0"))
+ prob.test <- ifelse(prob.test >= thresh, 1, 0)  
+ prob.test <- factor(prob.test, levels = c("1", "0"))
+ 
+ 
+ t <- table(prob.test, test.pregnant)
+ t
+ sens4[i] <- t[1, 1] / sum(t[1, 1] + t[2, 1])
+ spec4[i] <- t[2, 2] / sum(t[1, 2] + t[2, 2])
+ acc4[i] <- sum(t[1, 1] + t[2, 2]) / sum(t[1, 1] + t[1, 2] + t[2, 1] + t[2, 2])
+ ppv4 <- t[1, 1] / sum(t[1, 1] + t[1, 2])
+ npv4 <- t[2, 2] / sum(t[2, 1] + t[2, 2])
+}
+
+sens4
+spec4
+acc4
+ppv4
+npv4
+
+box4 <- boxplot(data.frame(sens4, spec4, acc4, ppv4, npv4), horizontal = TRUE)
+
+summary(sens4)
+summary(spec4)
+summary(acc4)
+summary(ppv4)
+summary(npv4)
+```
+
+(d) From (b) and (c), comment on the predictive performance of the model in reference to each: accuracy, sensitivity, specificity, ppv, and npv.
+```{r}
+#FOr the ranges I took the rounded first and third quartiles
+#Beside the model one is interpretation
+#Model 1:
+  #Sensitivity: 88%-93%   #This is a very good sensitivity.
+  #Specificity: 68%-70%   #This is a pretty good specificity.
+  #Accuracy: 74%-76%    #This is an above average accuracy
+  #Positive Predictive Value: 51%   #This is not a great PPV, it means only half the predicted 1's are correct.
+  #Negative Predictive Value: 98%   #This is a good NPV, almost all predicted 0's are correct.
+
+#Model 2:
+  #Sensitivity: 78%-83%
+  #Specificity: 83%-87%
+  #Accuracy: 83%-85%
+  #Positive Predictive Value: 67%
+  #Negative Predictive Value: 93%
+
+#Model 3:
+  #Sensitivity: 96%-98%
+  #Specificity: 51%-55%
+  #Accuracy: 64%-66%
+  #Positive Predictive Value: 40%
+  #Negative Predictive Value: 98%
+
+#Model 4:
+  #Sensitivity: 68%-74%
+  #Specificity: 92%-94%
+  #Accuracy: 86.5%-87.5%
+  #Positive Predictive Value: 73%
+  #Negative Predictive Value: 89%
+```
+
+
+(b) Now, looking at the four total sets of box plots and summary measures, make
+a more informed decision on the optimal threshold value. Keep in mind, the
+company would like to err on the side of not sending maternity ads to housholds
+that are not pregnant. Using what the plots and numbers show, comment on why
+you are recommending the threshold value you chose.
+```{r}
+#The threshold value I would choose is in model 4. This may seem counterintuitive if you were to just look at the accuracy levels for the different models, because it is the worst when it comes to just that metric. However, looking at specificity (accurately predicting who is not pregnant), our fourth model performs the best. You could also look at the positive predictive value (probability that a predicted pregnant customer actually is pregnant), and model 4 performs the best in that category as well. We would want to pick model 4 because even though it lacks in overall accuracy, it is more precautionary in assigning a pregnant prediction to a customer, which will help the company avoid targeting the wrong customer base.
+```
+
+
+
+
+
+
+
+
